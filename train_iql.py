@@ -1,22 +1,8 @@
+import sys
+import time
 from replay_buffer import ReplayBuffer
 from agent_iql import Agent
-import sys
-
-import time
-
-
-def time_format(sec):
-    """
-    
-    Args:
-        param1():
-    """
-    hours = sec // 3600
-    rem = sec - hours * 3600
-    mins = rem // 60
-    secs = rem - mins * 60
-    return hours, mins, round(secs,2)
-
+from utils import time_format
 
 
 def train(env, config):
@@ -25,11 +11,10 @@ def train(env, config):
     """
     t0 = time.time()
     save_models_path =  str(config["locexp"])
-    memory = ReplayBuffer((8,), (1,), config["expert_buffer_size"], config["device"])
+    memory = ReplayBuffer((8,), (1,), config["buffer_size"], config["seed"], config["device"])
     memory.load_memory(config["buffer_path"])
     agent = Agent(state_size=8, action_size=4,  config=config) 
-    agent.load("search_results/models/280000-")
-    memory_t = ReplayBuffer((8,), (1,), config["expert_buffer_size"], config["device"])
+    memory_t = ReplayBuffer((8,), (1,), config["expert_buffer_size"], config["seed"], config["device"])
     memory_t.load_memory(config["expert_buffer_path"])
     memory.idx = config["idx"] 
     memory_t.idx = config["idx"] * 4
@@ -46,3 +31,5 @@ def train(env, config):
             agent.save(save_models_path + "/models/{}-".format(t))
             agent.test_predicter(memory)
             agent.test_q_value(memory)
+            agent.eval_policy()
+            agent.eval_policy(True, 1)

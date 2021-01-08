@@ -6,11 +6,11 @@ import torch.nn.functional as F
 
 class ReplayBuffer(object):
     """Buffer to store environment transitions."""
-    def __init__(self, obs_shape, action_shape, capacity, device):
+    def __init__(self, obs_shape, action_shape, capacity, seed, device):
+        np.random.seed(seed=seed)
+        self.seed = torch.manual_seed(seed)
         self.capacity = capacity
         self.device = device
-
-
         self.obses = np.empty((capacity, *obs_shape), dtype=np.float32)
         self.next_obses = np.empty((capacity, *obs_shape), dtype=np.float32)
         self.actions = np.empty((capacity, *action_shape), dtype=np.int8)

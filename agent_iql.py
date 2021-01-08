@@ -4,9 +4,9 @@ import time
 import numpy as np
 import random
 import gym
-import gym.wrappers
+from gym import wrappers
 from collections import namedtuple, deque
-from models import QNetwork, Classifier, RNetwork, DQNetwork
+from models import QNetwork, Classifier
 import torch
 import torch.nn  as nn
 import torch.nn.functional as F
@@ -28,10 +28,14 @@ logging.basicConfig(filename="search_results/{}.log".format(dt_string), level=lo
 
 class Agent():
     def __init__(self, state_size, action_size, config):
-        self.env_name = config["env_name"]
+        self.seed = config["seed"]
+        torch.manual_seed(self.seed)
+        np.random.seed(seed=self.seed)
+        random.seed(self.seed)
+        self.env = gym.make(config["env_name"])
+        self.env.seed(self.seed)
         self.state_size = state_size
         self.action_size = action_size
-        self.seed = config["seed"]
         self.clip = config["clip"]
         self.device = 'cuda'
         print("Clip ", self.clip)
@@ -47,8 +51,8 @@ class Agent():
         self.fc1 = config["fc1_units"]
         self.fc2 = config["fc2_units"]
         
-        self.qnetwork_local = DQNetwork(state_size, action_size, self.seed).to(self.device)
-        self.qnetwork_target = DQNetwork(state_size, action_size, self.seed).to(self.device)
+        self.qnetwork_local = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
+        self.qnetwork_target = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=self.lr)
         self.soft_update(self.qnetwork_local, self.qnetwork_target, 1)
         
@@ -63,15 +67,16 @@ class Agent():
         self.soft_update(self.R_local, self.R_target, 1) 
 
         self.steps = 0
-        self.predicter = Classifier(state_size, action_size, self.seed).to(self.device)
+        self.predicter = Classifier(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.optimizer_pre = optim.Adam(self.predicter.parameters(), lr=self.lr_pre)
-        pathname = "lr_{}_batch_size_{}_fc1_{}_fc2_{}_fc3_{}_seed_{}".format(self.lr, self.batch_size, self.fc1, self.fc2, self.fc3, self.seed)
+        pathname = "lr_{}_batch_size_{}_fc1_{}_fc2_{}_seed_{}".format(self.lr, self.batch_size, self.fc1, self.fc2, self.seed)
         pathname += "_clip_{}".format(config["clip"])
         pathname += "_tau_{}".format(config["tau"])
         now = datetime.now()    
         dt_string = now.strftime("%d_%m_%Y_%H:%M:%S")
         pathname += dt_string
         tensorboard_name = str(config["locexp"]) + '/runs/' + pathname
+        self.vid_path = str(config["locexp"]) + '/vid'
         self.writer = SummaryWriter(tensorboard_name)
         print("summery writer ", tensorboard_name)
         self.average_prediction = deque(maxlen=100)
@@ -333,41 +338,47 @@ class Agent():
         print("save models to {}".format(filename))
 
     def test_q_value(self, memory):
-        same_action = 0
-        same_q = 0
-        same_sh = 0
         test_elements = memory.idx
         all_diff = 0
         error = True
+        used_elements_r = 0
+        used_elements_q = 0
+        r_error = 0
+        q_error = 0
         for i in range(test_elements):
             states = memory.obses[i]
             actions = memory.actions[i]
             states = torch.as_tensor(states, device=self.device).unsqueeze(0)
             actions = torch.as_tensor(actions, device=self.device)
+            one_hot = torch.Tensor([0 for i in range(self.action_size)], device="cpu")
+            one_hot[actions.item()] = 1
             with torch.no_grad():
                 r_values = self.R_local(states.detach()).detach()
                 q_values = self.qnetwork_local(states.detach()).detach()
-                qsh_values = self.q_shift_target(states.detach()).detach()
-                best_sh = torch.argmax(qsh_values).item()
-                best_action = torch.argmax(r_values).item()
-                best_q = torch.argmax(q_values).item()
+                soft_r = F.softmax(r_values, dim=1).to("cpu")
+                soft_q = F.softmax(q_values, dim=1).to("cpu")
                 actions = actions.type(torch.int64)
-                if  actions.item() == best_q:
-                    same_q += 1
-                if  actions.item() == best_action:
-                    same_action += 1
-                if  actions.item() == best_sh:
-                    same_sh += 1
-
-        text = "same r max {} of {} ".format(same_action, test_elements)
+                kl_q =  F.kl_div(soft_q.log(), one_hot, None, None, 'sum')
+                kl_r =  F.kl_div(soft_r.log(), one_hot, None, None, 'sum')
+                if kl_r == float("inf"):
+                    pass
+                else:
+                    r_error += kl_r
+                    used_elements_r += 1
+                if kl_q == float("inf"):
+                    pass
+                else:
+                    q_error += kl_q
+                    used_elements_q += 1
+                    
+        average_q_kl = q_error / used_elements_q
+        average_r_kl = r_error / used_elements_r
+        text = "Kl div of Reward {} of {} elements".format(average_q_kl, used_elements_r)
         print(text)
-        logging.debug(text)
-        text = "same q max {} of {} ".format(same_q, test_elements)
+        text = "Kl div of Q_values {} of {} elements".format(average_r_kl, used_elements_q)
         print(text)
-        logging.debug(text)
-        text = "same q shift max {} of {} ".format(same_q, test_elements)
-        print(text)
-        logging.debug(text)
+        self.writer.add_scalar('KL_reward', average_r_kl, self.steps)
+        self.writer.add_scalar('KL_q_values', average_q_kl, self.steps)
 
 
     def act(self, states):
@@ -377,4 +388,28 @@ class Agent():
         return action 
 
 
+    def eval_policy(self, record=False, eval_episodes=4):
+        if record:
+            env = wrappers.Monitor(self.env, str(self.vid_path) + "/{}".format(self.steps), video_callable=lambda episode_id: True, force=True)
+        else:
+            env = self.env
 
+        average_reward = 0
+        scores_window = deque(maxlen=100)
+        s = 0
+        for i_epiosde in range(eval_episodes):
+            episode_reward = 0
+            state = env.reset()
+            while True:
+                s += 1
+                action = self.act(state)
+                state, reward, done, _ = env.step(action)
+                episode_reward += reward
+                if done:
+                    break
+            scores_window.append(episode_reward)
+        if record:
+            return 
+        average_reward = np.mean(scores_window)
+        print("Eval Episode {}  average Reward {} ".format(eval_episodes, average_reward))
+        self.writer.add_scalar('Eval_reward', average_reward, self.steps)
