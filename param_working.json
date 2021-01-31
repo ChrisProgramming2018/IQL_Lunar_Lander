@@ -9,7 +9,7 @@
   "DDQN": 1,
   "buffer_size": 20000,
   "seed": 42,
-  "idx": 50000,
+  "idx": 19999,
   "eval": 1000,
   "fc1_units": 64,
   "fc2_units": 64,

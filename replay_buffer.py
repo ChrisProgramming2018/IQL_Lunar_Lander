@@ -126,10 +126,7 @@ class ReplayBuffer(object):
 
         with open(filename + '/next_obses.npy', 'rb') as f:
             self.next_obses = np.load(f)
-        
-        with open(filename + '/rewards.npy', 'rb') as f:
-            self.rewards = np.load(f)
-        
+         
         with open(filename + '/not_dones.npy', 'rb') as f:
             self.not_dones = np.load(f)
         

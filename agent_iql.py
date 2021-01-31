@@ -67,7 +67,7 @@ class Agent():
         self.soft_update(self.R_local, self.R_target, 1) 
 
         self.steps = 0
-        self.predicter = Classifier(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
+        self.predicter = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.optimizer_pre = optim.Adam(self.predicter.parameters(), lr=self.lr_pre)
         pathname = "lr_{}_batch_size_{}_fc1_{}_fc2_{}_seed_{}".format(self.lr, self.batch_size, self.fc1, self.fc2, self.seed)
         pathname += "_clip_{}".format(config["clip"])
@@ -86,12 +86,12 @@ class Agent():
             action = torch.Tensor(1) * 0 +  a
             self.all_actions.append(action.to(self.device))
     
-    def learn(self, memory_ex, memory_all):
+    def learn(self, memory_ex):
         logging.debug("--------------------------New update-----------------------------------------------")
         states, next_states, actions, dones = memory_ex.expert_policy(self.batch_size)
         self.steps += 1
         self.state_action_frq(states, actions)
-        states, next_states, actions, dones = memory_all.expert_policy(self.batch_size)
+        actions = torch.randint(0, 4, (self.batch_size, 1), dtype=torch.int64, device=self.device)
         self.compute_shift_function(states, next_states, actions, dones)
         self.compute_r_function(states, actions)
         self.compute_q_function(states, next_states, actions, dones)
@@ -116,8 +116,10 @@ class Agent():
         if self.double_dqn:
             q_values = self.qnetwork_local(next_states).detach()
             _, best_action = q_values.max(1)
+            best_action =  best_action.unsqueeze(1)
             Q_targets_next = self.qnetwork_target(next_states).detach()
-            Q_targets_next = Q_targets_next.gather(1, best_action.unsqueeze(0)).squeeze(0).unsqueeze(1)
+            #Q_targets_next = Q_targets_next.gather(1, best_action.unsqueeze(0)).squeeze(0).unsqueeze(1)
+            Q_targets_next = Q_targets_next.gather(1, best_action)
         else:
             Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
         
@@ -127,7 +129,6 @@ class Agent():
         rewards = self.R_target(states).detach().gather(1, actions.detach()).squeeze(0)
         Q_targets = rewards + (self.gamma * Q_targets_next * (dones))
         Q_expected = self.qnetwork_local(states).gather(1, actions)
-        
         loss = F.mse_loss(Q_expected, Q_targets.detach())
         
         # Get max predicted Q values (for next states) from target model
@@ -150,14 +151,14 @@ class Agent():
         actions = actions.type(torch.int64)
         with torch.no_grad():
             # Get max predicted Q values (for next states) from target model
-            #if self.double_dqn:
-            #qt = self.q_shift_local(next_states)
-            #max_q, max_actions = qt.max(1)
-            #Q_targets_next = self.qnetwork_target(next_states).gather(1, max_actions.unsqueeze(1))
-            #else:
-            Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
+            if self.double_dqn:
+                q_shift = self.q_shift_local(next_states)
+                max_q, max_actions = q_shift.max(1)
+                Q_targets_next = self.qnetwork_target(next_states).gather(1, max_actions.unsqueeze(1))
+            else:
+                Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
             # Compute Q targets for current states
-            Q_targets = self.gamma * Q_targets_next * (dones)
+            Q_targets = self.gamma * Q_targets_next
 
         # Get expected Q values from local model
         Q_expected = self.q_shift_local(states).gather(1, actions)
@@ -257,12 +258,11 @@ class Agent():
         """ Train classifer to compute state action freq
         """
         self.predicter.train()
-        output = self.predicter(states, train=True)
+        #output = self.predicter(states, train=True)
+        output = self.predicter(states)
         output = output.squeeze(0)
-        # logging.debug("out predicter {})".format(output))
 
         y = action.type(torch.long).squeeze(1)
-        #print("y shape", y.shape)
         loss = nn.CrossEntropyLoss()(output, y)
         self.optimizer_pre.zero_grad()
         loss.backward()
@@ -339,6 +339,7 @@ class Agent():
 
     def test_q_value(self, memory):
         test_elements = memory.idx
+        test_elements = 100
         all_diff = 0
         error = True
         used_elements_r = 0

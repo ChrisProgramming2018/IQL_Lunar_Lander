@@ -16,11 +16,19 @@ class QNetwork(nn.Module):
             fc2_units (int): Number of nodes in second hidden layer
         """
         super(QNetwork, self).__init__()
+        self.leak = 0.01
         self.seed = torch.manual_seed(seed)
         self.fc1 = nn.Linear(state_size, fc1_units)
         self.fc2 = nn.Linear(fc1_units, fc2_units)
         self.fc3 = nn.Linear(fc2_units, action_size)
+        self.reset_parameters()
 
+    def reset_parameters(self):
+        """ Initilaize the weights using He et al (2015) weights """
+        torch.nn.init.kaiming_normal_(self.fc1.weight.data, a=self.leak, mode='fan_in')
+        torch.nn.init.kaiming_normal_(self.fc2.weight.data, a=self.leak, mode='fan_in')
+        torch.nn.init.uniform_(self.fc3.weight.data, -3e-4, 3e-4)
+    
     def forward(self, state):
         """Build a network that maps state -> action values."""
         x = F.relu(self.fc1(state))

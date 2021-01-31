@@ -19,6 +19,8 @@ def main(args):
         param["fc1_units"] = args.fc1_units
         param["fc2_units"] = args.fc2_units
         param["clip"] = args.clip
+    param["buffer_path"] = args.buffer_path
+    param["locexp"] = args.locexp
     text = str(param)
     write_into_file(str(param["locexp"]) + "/hyperparameters" , text)
     train(env, param)
@@ -38,5 +40,6 @@ if __name__ == "__main__":
     parser.add_argument('--fc2_units', default=64, type=int)
     parser.add_argument('--clip', default=-1, type=int)
     parser.add_argument('--mode', default="iql", type=str)
+    parser.add_argument('--buffer_path', default="expert_policy", type=str)
     arg = parser.parse_args()
     main(arg)
