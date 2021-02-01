@@ -1,8 +1,14 @@
 # Deep Inverse Q-learning LunarLander
 
 
+#### Policy after 1000 updates reward of - 600
+![](images/Inverse_batch_64_20k_samples_after_1k_reward_-600.gif)
+#### Policy after 5000 updates reward of - 126
+![](images/Inverse_batch_64_20k_samples_after_5k_reward_-126.2.gif)
+#### Policy after 9000 updates reward of - 15.2
+![](images/Inverse_batch_64_20k_samples_after_9k_reward_-15.2.gif)
+#### Policy after 15000 updates reward of 253
 ![](images/Inverse_batch_64_20k_samples_after_15k_reward_253.gif)
-
 
 
 ### Introduction
@@ -37,6 +43,4 @@ The expert samples are generated for an policy that solved the problem with an r
 ```
 	pip3 install -r requirements.txt
 ```
-
-
 
