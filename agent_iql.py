@@ -13,7 +13,7 @@ import torch.optim as optim
 import numpy as np
 from gym import wrappers
 from collections import namedtuple, deque
-from models import QNetwork, Classifier
+from models import QNetwork
 from torch.utils.tensorboard import SummaryWriter
 from torch.autograd import Variable
 from datetime import datetime

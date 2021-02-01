@@ -1,3 +1,5 @@
+# Copyright 2020
+# Author: Christian Leininger <info2016frei@gmail.com>
 import os
 import numpy as np
 import torch
