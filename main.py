@@ -24,6 +24,10 @@ def main(args):
         param["clip"] = args.clip
     param["buffer_path"] = args.buffer_path
     param["locexp"] = args.locexp
+    param["wandb"] = args.wandb
+    param["render"] = args.render
+    param["buffer_size"] = args.buffer_size
+    param["action_shape"] = args.action_shape
     text = str(param)
     write_into_file(str(param["locexp"]) + "/hyperparameters", text)
     train(env, param)
@@ -40,8 +44,12 @@ if __name__ == "__main__":
     parser.add_argument('--lr', default=5e-4, type=float)
     parser.add_argument('--fc1_units', default=64, type=int)
     parser.add_argument('--fc2_units', default=64, type=int)
+    parser.add_argument('--action_shape', default=1, type=int)
+    parser.add_argument('--buffer_size', default=20000, type=int)
     parser.add_argument('--clip', default=-1, type=int)
+    parser.add_argument('--render', default=False, type=bool)
     parser.add_argument('--mode', default="iql", type=str)
+    parser.add_argument('--wandb', default=False, type=bool)
     parser.add_argument('--buffer_path', default="expert_policy", type=str)
     arg = parser.parse_args()
     main(arg)

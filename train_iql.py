@@ -1,6 +1,7 @@
 import sys
 import time
-from replay_buffer import ReplayBuffer
+import wandb
+from replayBuffer import ReplayBuffer
 from agent_iql import Agent
 from utils import time_format
 
@@ -9,11 +10,18 @@ def train(env, config):
     """
 
     """
+    if config["wandb"]:
+        wandb.init(
+                project="master_lab",
+                name="Test_inverse",
+                sync_tensorboard=True,
+                monitor_gym=True,
+                )
     t0 = time.time()
     save_models_path =  str(config["locexp"])
-    memory = ReplayBuffer((8,), (1,), config["buffer_size"], config["seed"], config["device"])
+    memory = ReplayBuffer((4, config["size"], config["size"]), (config["action_shape"], ), config["buffer_size"] + 1, config["device"])
     memory.load_memory(config["buffer_path"])
-    agent = Agent(state_size=8, action_size=4,  config=config) 
+    agent = Agent(state_size=512, action_size=env.action_space.n, config=config) 
     if config["idx"] < memory.idx:
         memory.idx = config["idx"] 
     print("memory idx ",memory.idx)  
@@ -27,4 +35,4 @@ def train(env, config):
             #agent.test_predicter(memory)
             agent.test_q_value(memory)
             agent.eval_policy()
-            agent.eval_policy(True, 1)
+            agent.eval_policy(config["render"], 1)

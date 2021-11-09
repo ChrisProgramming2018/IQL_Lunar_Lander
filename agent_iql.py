@@ -13,11 +13,18 @@ import torch.optim as optim
 import numpy as np
 from gym import wrappers
 from collections import namedtuple, deque
-from models import QNetwork
+from models import QNetwork, CNN
 from torch.utils.tensorboard import SummaryWriter
 from torch.autograd import Variable
 from datetime import datetime
 from utils import mkdir
+from stable_baselines3.common.atari_wrappers import (
+        ClipRewardEnv,
+        EpisodicLifeEnv,
+        FireResetEnv,
+        MaxAndSkipEnv,
+        NoopResetEnv,
+        )
 
 
 now = datetime.now()
@@ -32,12 +39,13 @@ class Agent():
         torch.manual_seed(self.seed)
         np.random.seed(seed=self.seed)
         random.seed(self.seed)
-        self.env = gym.make(config["env_name"])
-        self.env.seed(self.seed)
-        self.state_size = state_size
+        self.gym_id = config["env_name"]
+        self.exp_name = config["locexp"]
+        self.state_size = 512
         self.action_size = action_size
         self.clip = config["clip"]
-        self.device = 'cuda'
+        self.device = 'cuda' if torch.cuda.is_available() else "cpu"
+        print("Use device {}".format(self.device))
         self.double_dqn = config["DDQN"]
         self.lr_pre = config["lr_pre"]
         self.batch_size = config["batch_size"]
@@ -46,6 +54,8 @@ class Agent():
         self.gamma = 0.99
         self.fc1 = config["fc1_units"]
         self.fc2 = config["fc2_units"]
+        self.cnn = CNN(self.seed).to(self.device)
+        self.optimizer_cnn = optim.Adam(self.cnn.parameters(), lr=self.lr)
         self.qnetwork_local = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.qnetwork_target = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=self.lr)
@@ -58,7 +68,6 @@ class Agent():
         self.R_target = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.optimizer_r = optim.Adam(self.R_local.parameters(), lr=self.lr)
         self.soft_update(self.R_local, self.R_target, 1)
-        self.steps = 0
         self.predicter = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.optimizer_pre = optim.Adam(self.predicter.parameters(), lr=self.lr_pre)
         pathname = "lr_{}_batch_size_{}_fc1_{}_fc2_{}_seed_{}".format(self.lr, self.batch_size, self.fc1, self.fc2, self.seed)
@@ -67,6 +76,7 @@ class Agent():
         now = datetime.now()
         dt_string = now.strftime("%d_%m_%Y_%H:%M:%S")
         pathname += dt_string
+        self.steps = 0
         tensorboard_name = str(config["locexp"]) + '/runs/' + pathname
         self.vid_path = str(config["locexp"]) + '/vid'
         self.writer = SummaryWriter(tensorboard_name)
@@ -80,12 +90,17 @@ class Agent():
     def learn(self, memory_ex):
         logging.debug("--------------------------New update-----------------------------------------------")
         states, next_states, actions, dones = memory_ex.expert_policy(self.batch_size)
+        states = self.cnn(states)
+        detached_states = states.detach()
+        next_states = self.cnn(next_states)
+        detached_next_states = next_states.detach()
         self.steps += 1
         self.state_action_frq(states, actions)
-        actions = torch.randint(0, 4, (self.batch_size, 1), dtype=torch.int64, device=self.device)
-        self.compute_shift_function(states, next_states, actions, dones)
-        self.compute_r_function(states, actions)
-        self.compute_q_function(states, next_states, actions, dones)
+        # import pdb; pdb.set_trace()
+        actions = torch.randint(0, self.action_size, (self.batch_size, 1), dtype=torch.int64, device=self.device)
+        self.compute_shift_function(detached_states, detached_next_states, actions, dones)
+        self.compute_r_function(detached_states, actions)
+        self.compute_q_function(detached_states, detached_next_states, actions, dones)
         self.soft_update(self.R_local, self.R_target, self.tau)
         self.soft_update(self.q_shift_local, self.q_shift_target, self.tau)
         self.soft_update(self.qnetwork_local, self.qnetwork_target, self.tau)
@@ -107,7 +122,7 @@ class Agent():
         # Get expected Q values from local model
         # Compute loss
         rewards = self.R_target(states).detach().gather(1, actions.detach()).squeeze(0)
-        Q_targets = rewards + (self.gamma * Q_targets_next * (dones))
+        Q_targets = rewards + (self.gamma * Q_targets_next * (1 - dones))
         Q_expected = self.qnetwork_local(states).gather(1, actions)
         loss = F.mse_loss(Q_expected, Q_targets.detach())
         # Get max predicted Q values (for next states) from target model
@@ -219,7 +234,9 @@ class Agent():
         y = action.type(torch.long).squeeze(1)
         loss = nn.CrossEntropyLoss()(output, y)
         self.optimizer_pre.zero_grad()
+        self.optimizer_cnn.zero_grad()
         loss.backward()
+        self.optimizer_cnn.step()
         # torch.nn.utils.clip_grad_norm_(self.predicter.parameters(), 1)
         self.optimizer_pre.step()
         self.writer.add_scalar('Predict_loss', loss, self.steps)
@@ -234,6 +251,7 @@ class Agent():
             actions = memory.actions[i]
             states = torch.as_tensor(states, device=self.device).unsqueeze(0)
             actions = torch.as_tensor(actions, device=self.device)
+            states = self.cnn(states).detach()
             output = self.predicter(states)
             output = F.softmax(output, dim=1)
             # create one hot encode y from actions
@@ -290,6 +308,7 @@ class Agent():
             states = memory.obses[i]
             actions = memory.actions[i]
             states = torch.as_tensor(states, device=self.device).unsqueeze(0)
+            states = self.cnn(states).detach()
             actions = torch.as_tensor(actions, device=self.device)
             one_hot = torch.Tensor([0 for i in range(self.action_size)], device="cpu")
             one_hot[actions.item()] = 1
@@ -328,20 +347,22 @@ class Agent():
         return action
 
     def eval_policy(self, record=False, eval_episodes=4):
-        if record:
-            env = wrappers.Monitor(self.env, str(self.vid_path) + "/{}".format(self.steps), video_callable=lambda episode_id: True, force=True)
-        else:
-            env = self.env
+        run_name = f"{self.gym_id}__{self.exp_name}__{self.seed}__{int(time.time())}"
+        env = gym.vector.SyncVectorEnv([make_env(self.gym_id, self.seed,0, record, run_name) for i in range(1)])
+        env.seed(self.seed)
         average_reward = 0
         scores_window = deque(maxlen=100)
         s = 0
         for i_epiosde in range(eval_episodes):
             episode_reward = 0
-            state = env.reset()
+            obs = env.reset()
             while True:
                 s += 1
+                obs= torch.as_tensor(obs, device=self.device)
+                state = self.cnn(obs).detach()
                 action = self.act(state)
-                state, reward, done, _ = env.step(action)
+                # import pdb; pdb.set_trace()
+                obs, reward, done, _ = env.step((action,))
                 episode_reward += reward
                 if done:
                     break
@@ -351,3 +372,30 @@ class Agent():
         average_reward = np.mean(scores_window)
         print("Eval Episode {}  average Reward {} ".format(eval_episodes, average_reward))
         self.writer.add_scalar('Eval_reward', average_reward, self.steps)
+
+
+
+
+
+
+def make_env(gym_id, seed, idx, capture_video, run_name):
+    def thunk():
+        env = gym.make(gym_id)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        #env = NoopResetEnv(env, noop_max=30)
+        #env = MaxAndSkipEnv(env, skip=4)
+        #env = EpisodicLifeEnv(env)
+        #if "FIRE" in env.unwrapped.get_action_meanings():
+        #    env = FireResetEnv(env)
+        #env = ClipRewardEnv(env)
+        env = gym.wrappers.ResizeObservation(env, (84, 84))
+        env = gym.wrappers.GrayScaleObservation(env)
+        env = gym.wrappers.FrameStack(env, 4)
+        env.seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
+        return env
+    return thunk

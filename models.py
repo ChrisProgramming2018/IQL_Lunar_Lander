@@ -1,8 +1,38 @@
 # Copyright 2020
 # Author: Christian Leininger <info2016frei@gmail.com>
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    torch.nn.init.orthogonal_(layer.weight, std)
+    torch.nn.init.constant_(layer.bias, bias_const)
+    return layer
+
+
+
+class CNN(nn.Module):
+    def __init__(self, seed=0):
+        super(CNN, self).__init__()
+        self.seed = torch.manual_seed(seed)
+        self.network = nn.Sequential(
+                layer_init(nn.Conv2d(4, 32, 8, stride=4)),
+                nn.ReLU(),
+                layer_init(nn.Conv2d(32, 64, 4, stride=2)),
+                nn.ReLU(),
+                layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+                nn.ReLU(),
+                nn.Flatten(),
+                layer_init(nn.Linear(64 * 7 * 7, 512)),
+                nn.ReLU(),
+                )
+    def forward(self, state):
+        return self.network(state / 255.0)
+
+
+
 
 
 class QNetwork(nn.Module):
