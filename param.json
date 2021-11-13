@@ -1,5 +1,5 @@
 {
-  "env_name": "LunarLander-v2",
+  "env_name": "SpaceInvaders-v0",
   "locexp": "test",
   "lr": 5e-4,
   "lr_pre": 1e-4,
@@ -11,10 +11,11 @@
   "seed": 42,
   "idx": 50000,
   "eval": 1000,
+  "size": 84,
   "fc1_units": 64,
   "fc2_units": 64,
   "batch_size": 64,
   "clip": -5,
-  "buffer_path": "expert_policy",
+  "buffer_path": "expert_data_space_invadars_average_reward_1136.11_size_20000",
   "device": "cuda"
 }

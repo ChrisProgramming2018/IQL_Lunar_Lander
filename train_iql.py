@@ -1,6 +1,7 @@
 import sys
 import time
 import wandb
+import torch
 from replayBuffer import ReplayBuffer
 from agent_iql import Agent
 from utils import time_format
@@ -12,7 +13,7 @@ def train(env, config):
     """
     if config["wandb"]:
         wandb.init(
-                project="master_lab",
+                project="master_lab_inverse_rl",
                 name="Test_inverse",
                 sync_tensorboard=True,
                 monitor_gym=True,
@@ -21,7 +22,8 @@ def train(env, config):
     save_models_path =  str(config["locexp"])
     memory = ReplayBuffer((4, config["size"], config["size"]), (config["action_shape"], ), config["buffer_size"] + 1, config["device"])
     memory.load_memory(config["buffer_path"])
-    agent = Agent(state_size=512, action_size=env.action_space.n, config=config) 
+    agent = Agent(state_size=512, action_size=env.action_space.n, wandb=wandb, config=config) 
+    agent.cnn.network.load_state_dict(torch.load("Polciy_reward_1130.0_network"))
     if config["idx"] < memory.idx:
         memory.idx = config["idx"] 
     print("memory idx ",memory.idx)  
