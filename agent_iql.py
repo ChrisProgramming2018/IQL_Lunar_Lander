@@ -26,7 +26,7 @@ from stable_baselines3.common.atari_wrappers import (
         NoopResetEnv,
         )
 
-
+print(wrappers.__file__)
 now = datetime.now()
 dt_string = now.strftime("%d_%m_%Y_%H:%M:%S")
 mkdir("", "log_files")
@@ -34,7 +34,8 @@ logging.basicConfig(filename="log_files/{}.log".format(dt_string), level=logging
 
 
 class Agent():
-    def __init__(self, state_size, action_size, config):
+    def __init__(self, state_size, action_size, wandb, config):
+        self.wandb = wandb
         self.seed = config["seed"]
         torch.manual_seed(self.seed)
         np.random.seed(seed=self.seed)
@@ -261,6 +262,7 @@ class Agent():
                 same_state_predition += 1
         text = "Same prediction {} of {} ".format(same_state_predition, memory.idx)
         print(text)
+        wandb.log({"predicter acc": same_state_predition})
         logging.debug(text)
 
     def soft_update(self, local_model, target_model, tau=4):
@@ -348,6 +350,9 @@ class Agent():
 
     def eval_policy(self, record=False, eval_episodes=4):
         run_name = f"{self.gym_id}__{self.exp_name}__{self.seed}__{int(time.time())}"
+        if record:
+            print("save video ", run_name)
+            env = gym.vector.SyncVectorEnv([make_env(self.gym_id, self.seed,0, True, run_name) for i in range(1)])
         env = gym.vector.SyncVectorEnv([make_env(self.gym_id, self.seed,0, record, run_name) for i in range(1)])
         env.seed(self.seed)
         average_reward = 0
@@ -368,6 +373,8 @@ class Agent():
                     break
             scores_window.append(episode_reward)
         if record:
+            path = "videos/" + run_name + "/rl-video-episode-0.mp4"
+            self.wandb.log({"video": self.wandb.Video(path,fps=4,format="gif")})
             return
         average_reward = np.mean(scores_window)
         print("Eval Episode {}  average Reward {} ".format(eval_episodes, average_reward))

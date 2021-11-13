@@ -22,7 +22,7 @@ def main(args):
         param["fc1_units"] = args.fc1_units
         param["fc2_units"] = args.fc2_units
         param["clip"] = args.clip
-    param["buffer_path"] = args.buffer_path
+        param["buffer_path"] = args.buffer_path
     param["locexp"] = args.locexp
     param["wandb"] = args.wandb
     param["render"] = args.render
