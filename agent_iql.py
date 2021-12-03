@@ -56,7 +56,6 @@ class Agent():
         self.fc1 = config["fc1_units"]
         self.fc2 = config["fc2_units"]
         self.cnn = CNN(self.seed).to(self.device)
-        self.optimizer_cnn = optim.Adam(self.cnn.parameters(), lr=self.lr)
         self.qnetwork_local = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.qnetwork_target = QNetwork(state_size, action_size, self.fc1, self.fc2, self.seed).to(self.device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=self.lr)
@@ -235,9 +234,7 @@ class Agent():
         y = action.type(torch.long).squeeze(1)
         loss = nn.CrossEntropyLoss()(output, y)
         self.optimizer_pre.zero_grad()
-        self.optimizer_cnn.zero_grad()
         loss.backward()
-        self.optimizer_cnn.step()
         # torch.nn.utils.clip_grad_norm_(self.predicter.parameters(), 1)
         self.optimizer_pre.step()
         self.writer.add_scalar('Predict_loss', loss, self.steps)

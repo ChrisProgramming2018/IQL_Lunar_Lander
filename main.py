@@ -18,11 +18,14 @@ def main(args):
     env = gym.make(param["env_name"])
     if args.mode == "search":
         param["lr_pre"] = args.lr_pre
+        param["lr_iql_q"] = args.lr_iql_q
         param["lr"] = args.lr
         param["fc1_units"] = args.fc1_units
         param["fc2_units"] = args.fc2_units
         param["clip"] = args.clip
         param["buffer_path"] = args.buffer_path
+    param["run"] = args.run
+    param["seed"] = args.seed
     param["locexp"] = args.locexp
     param["wandb"] = args.wandb
     param["render"] = args.render
@@ -51,5 +54,7 @@ if __name__ == "__main__":
     parser.add_argument('--mode', default="iql", type=str)
     parser.add_argument('--wandb', default=False, type=bool)
     parser.add_argument('--buffer_path', default="expert_policy", type=str)
+    parser.add_argument('--run', default=0, type=int)
+    parser.add_argument('--seed', default=0, type=int)
     arg = parser.parse_args()
     main(arg)
