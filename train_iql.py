@@ -11,10 +11,11 @@ def train(env, config):
     """
 
     """
+    run_name = "Run_{}_seed_{}".format(config["run"], config["seed"])
     if config["wandb"]:
         wandb.init(
                 project="master_lab_inverse_rl",
-                name="Test_inverse",
+                name=run_name,
                 sync_tensorboard=True,
                 monitor_gym=True,
                 )
